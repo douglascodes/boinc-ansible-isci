@@ -1,0 +1,74 @@
+# ISCSI setup
+- name: Install required items for ISCSI
+  apt:
+    name: "{{item}}"
+    state: present
+    update_cache: yes
+    force_apt_get: yes
+  with_items:
+    - open-iscsi
+  become: true
+
+- name: Make sure open-iscsi starts at boot
+  systemd:
+    name: iscsid
+    enabled: true
+    state: stopped
+  become: true
+
+- name: Modify InitiatorName to be variable
+  replace:
+    path: /etc/iscsi/initiatorname.iscsi
+    regexp: '^InitiatorName=.+'
+    replace: '{{intiator_line}}'
+    backup: no
+  become: true
+
+- name: Discovers ISCSI nodes
+  open_iscsi:
+    portal: '{{ iscsi_portal }}'
+    port: 3260
+    discover: true
+  become: true
+
+- name: Sets ISCSI intiator and portal
+  open_iscsi:
+    target: '{{ iscsi_target }}'
+    portal: '{{ iscsi_portal }}'
+    port: 3260
+    login: yes
+    auto_node_startup: yes
+  become: true
+
+- name: Ensure fstab has mount for BOINC
+  lineinfile:
+    path: /etc/fstab
+    line: "{{fstab_mount_boinc}}"
+    state: present
+  become: true
+
+- name: Creates directory for ISCSI drop in
+  file:
+    path: /etc/systemd/system/open-iscsi.service.d
+    state: directory
+  become: true
+
+- name: Drop in systemd file for ISCSI
+  copy:
+    dest: "/etc/systemd/system/open-iscsi.service.d/local.conf"
+    content: |
+      [Unit]
+      Description=Open iSCSI Daemon
+      BindsTo=network.target
+      After=network.target
+      #
+  become: true
+
+- name: Make sure open-iscsi starts at boot
+  systemd:
+    name: open-iscsi
+    enabled: true
+    daemon_reload: yes
+  become: true
+
+- include_tasks: reboot.yml

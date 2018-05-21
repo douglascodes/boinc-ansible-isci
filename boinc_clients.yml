@@ -1,0 +1,127 @@
+---
+- hosts: BOINC
+  vars:
+    boinc_detach: 1
+    boinc_attach: 0
+    boinc_store: /var/lib/boinc-client
+    fstab_mount_boinc: "PARTUUID={{boinc_mount_partuuid}} /mnt/BOINC xfs noauto,rw,x-systemd.automount,x-systemd.device,noatime,noquota,nodiscard 0 1"
+    intiator_line: "InitiatorName={{iscsi_initiator_name}}"
+  tasks:
+    - name: Testing variable insertion
+      debug:
+        msg: "{{iscsi_initiator_name}}"
+
+    - name: Disable automatic update in apt-daily
+      systemd:
+        name: apt-daily
+        enabled: no
+        state: stopped
+        daemon_reload: yes
+      become: true
+
+    - name: Disable automatic update in apt-daily.timer
+      systemd:
+        name: apt-daily.timer
+        enabled: no
+        state: stopped
+        daemon_reload: yes
+      become: true
+
+    - name: Update existing software
+      apt:
+        name: "*"
+        state: latest
+        update_cache: yes
+        force_apt_get: yes
+      become: true
+
+    - name: Install required items
+      apt:
+        name: "{{item}}"
+        state: present
+        update_cache: yes
+        force_apt_get: yes
+      with_items:
+        - pciutils
+        - bzip2
+        - gzip
+        - zip
+        - unzip
+      become: true
+
+# BOINC setup
+
+    - name: Create boinc group
+      group:
+        name: boinc
+        state: present
+        system: yes
+      become: true
+
+    - name: Add "{{ target_user }}" to BOINC group
+      user:
+        name: "{{ target_user }}"
+        groups: boinc
+        append: yes
+      become: true
+
+    - name: Creates directory
+      file:
+        path: /mnt/BOINC
+        state: directory
+        owner: "{{ target_user }}"
+        group: boinc
+        recurse: yes
+      become: true
+
+    - name: Creates directory
+      file:
+        path: "{{item}}"
+        src: /mnt/BOINC
+        state: link
+        owner: "{{ target_user }}"
+        group: boinc
+      become: true
+      with_items:
+        - /home/{{ target_user }}/BOINC
+        - /var/lib/boinc
+        - /var/lib/boinc-client
+
+    - name: Does ISCSI need to be setup?
+      shell: "grep -i {{iscsi_initiator_name}} /etc/iscsi/initiatorname.iscsi"
+      check_mode: no
+      register: iscsi_need_install
+      ignore_errors: true
+      become: true
+
+    - name: Include ISCSI setup when initiator is not set
+      include_tasks: iscsi.yml
+      when: not iscsi_need_install.stdout_lines
+
+    - name: Does BOINC need to be setup?
+      shell: "grep -i BOINC /etc/systemd/system/boinc.service.d/local.conf"
+      check_mode: no
+      register: boinc_need_install
+      ignore_errors: true
+      become: true
+
+    - name: Include BOINC setup when drop in conf not created
+      include_tasks: boinc_install.yml
+      when: not boinc_need_install.stdout_lines
+
+    - name: Does ZSH need to be set up
+      shell: 'grep -i ZSH_THEME=\"gallifrey\" ~/.zshrc'
+      check_mode: no
+      register: zsh_need_install
+      ignore_errors: true
+
+    - name: Include ZSH setup when theme is not set
+      include_tasks: zsh.yml
+      when: not zsh_need_install.stdout_lines
+
+    - name: Ensure each boinc project is configured
+      include_tasks: boinc_link_account.yml boinc_account_file_path={{item.account_file}} boinc_account_url={{item.url}} boinc_account_key={{item.key}} boinc_account_name={{item.name}}
+      loop: "{{boinc_projects}}"
+
+    - name: All done, reboot once more
+      include_tasks: reboot.yml

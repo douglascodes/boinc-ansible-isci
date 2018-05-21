@@ -1,0 +1,19 @@
+# Boinc Account Link tasks
+- name: Does account file exist?
+  stat:
+    path: /mnt/BOINC/{{boinc_account_file_path}}
+  register: account_file_test
+
+- name: Detach project
+  command: boinccmd --project {{boinc_account_url}} detach
+  register: command_output
+  changed_when: command_output is success
+  failed_when: command_output.rc != 0 and command_output.rc != 126
+  when: account_file_test.stat.exists and boinc_detach
+
+- name: Attach project
+  command: boinccmd --project_attach {{boinc_account_url}} {{boinc_account_key}} attach
+  register: command_output
+  changed_when: command_output is success
+  failed_when: command_output.rc != 0 and command_output.rc != 126
+  when: not account_file_test.stat.exists and boinc_attach

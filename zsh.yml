@@ -1,0 +1,50 @@
+# ZSH installation
+- name: Install required items
+  apt:
+    name: "{{item}}"
+    state: present
+    update_cache: yes
+    force_apt_get: yes
+  with_items:
+    - zsh
+    - git
+    - python-pexpect
+  become: true
+
+- name: Creates directory
+  file:
+    path: ~/src
+    state: directory
+
+- name: Download latest oh-my-zsh
+  git:
+    repo: 'https://github.com/robbyrussell/oh-my-zsh.git'
+    dest: ~/src/oh-my-zsh
+
+- name: Install oh-my-zsh
+  expect:
+    command: /bin/bash -c ./tools/install.sh
+    chdir: ~/src/oh-my-zsh
+    creates: ~/.oh-my-zsh
+    responses:
+      (?i).+Password: "{{ target_user_pass }}"
+  ignore_errors: true
+
+- name: Modifies directory ownership
+  file:
+    path: ~/.oh-my-zsh
+    state: directory
+    owner: "{{ target_user }}"
+    recurse: yes
+
+- name: Checks for .zshrc
+  stat:
+    path: ~/.zshrc
+  register: zshrc
+
+- name: Set default theme
+  replace:
+    path:  ~/.zshrc
+    regexp: 'ZSH_THEME="robbyrussell"'
+    replace: 'ZSH_THEME="gallifrey"'
+  when: zshrc.stat.exists

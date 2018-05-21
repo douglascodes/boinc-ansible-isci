@@ -1,0 +1,45 @@
+# Boinc setup
+- name: Install required items for BOINC
+  apt:
+    name: "{{item}}"
+    state: present
+    update_cache: yes
+    force_apt_get: yes
+  with_items:
+    - boinc
+    - boinc-client
+    - boinc-manager
+    - boinc-client-nvidia-cuda
+    - boinc-app-eah-brp
+    - boinc-app-seti
+    - boinc-virtualbox
+  become: true
+
+- name: Creates directory for BOINC drop in
+  file:
+    path: /etc/systemd/system/boinc.service.d
+    state: directory
+  become: true
+
+- name: Drop in systemd file for BOINC
+  copy:
+    dest: "/etc/systemd/system/boinc.service.d/local.conf"
+    content: |
+      [Unit]
+      Description=BOINC Daemon
+      BindsTo=open-iscsi.service
+      RequiresMountsFor=/mnt/BOINC
+      After=open-iscsi.service mnt-BOINC.automount
+
+      [Service]
+      ExecStart=
+      ExecStart=/usr/bin/boinc --dir /var/lib/boinc
+  become: true
+
+- name: Make sure BOINC starts at boot
+  systemd:
+    name: boinc-client
+    enabled: true
+    state: started
+    daemon_reload: yes
+  become: true
